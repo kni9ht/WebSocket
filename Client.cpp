@@ -1,33 +1,36 @@
 #include <iostream>
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
-#include <boost/asio/ssl.hpp>
-#include <boost/beast/core.hpp>
-#include <boost/beast/websocket.hpp>
-#include <boost/beast/version.hpp>
-#include <boost/beast/ssl.hpp>
+#include <thread>
 
-namespace asio = boost::asio;
-namespace beast = boost::beast;
-namespace websocket = beast::websocket;
-namespace http = beast::http;
-using tcp = boost::asio::ip::tcp;
+using boost::asio::ip::tcp;
 
-int main()
-{
-    asio::io_context io_context;
-    asio::ssl::context ctx(asio::ssl::context::tlsv12);
-    ctx.set_verify_mode(asio::ssl::verify_none);
-    tcp::resolver resolver(io_context);
-    websocket::stream<beast::ssl_stream<tcp::socket>> ws(io_context, ctx);
-    auto const results = resolver.resolve("localhost", "12345");
-    asio::connect(ws.next_layer().next_layer(), results.begin(), results.end());
-    ws.next_layer().handshake(asio::ssl::stream_base::client);
-    ws.handshake("localhost", "/");
+void read_messages(tcp::socket& socket) {
+    try {
+        for (;;) {
+            boost::asio::streambuf buf;
+            boost::asio::read_until(socket, buf, "\n");
+            std::string message{boost::asio::buffers_begin(buf.data()), boost::asio::buffers_end(buf.data())};
+            std::cout << "Received message: " << message;
+        }
+    } catch (std::exception& e) {
+        std::cerr << "Error reading message: " << e.what() << std::endl;
+    }
+}
+
+int main() {
+    boost::asio::io_context io_context;
+    tcp::socket socket(io_context);
+
+    socket.connect(tcp::endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 12345));
+
+    std::thread t(read_messages, std::ref(socket));
+
     std::string message;
-    beast::flat_buffer buffer;
-    ws.read(buffer);
-    message = beast::buffers_to_string(buffer.data());
-    std::cout << "Received message from server: " << message << std::endl;
+    while (getline(std::cin, message)) {
+        boost::asio::write(socket, boost::asio::buffer(message + "\n"));
+    }
+
+    t.join();
+
     return 0;
 }
