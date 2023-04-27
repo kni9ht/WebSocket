@@ -49,7 +49,7 @@ private:
                     }
                     do_read(connections);
                 }
-            });
+        });
     }
 
     void do_write() {
